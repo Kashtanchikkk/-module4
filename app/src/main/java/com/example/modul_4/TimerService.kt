@@ -28,13 +28,21 @@ object Helper {
 
     fun createNotificationMessage(context: Context, seconds: Int) = NotificationCompat.Builder(context, CHANNEL_ID)
         .setContentTitle("Таймер")
-        .setContentText("Прошло $seconds секунд")
+        .setContentText("Осталось $seconds секунд")
+        .setSmallIcon(R.drawable.ic_launcher_foreground)
+        .build()
+
+    fun createCompletedNotificationMessage(context: Context) = NotificationCompat.Builder(context, CHANNEL_ID)
+        .setContentTitle("Таймер")
+        .setContentText("Таймер завершён!")
         .setSmallIcon(R.drawable.ic_launcher_foreground)
         .build()
 }
 
 class TimerService : Service() {
     private var seconds = 0
+
+    private var duration = 0
     private var job: Job? = null
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default)
     private val SERVICE_ID = 100
@@ -49,27 +57,42 @@ class TimerService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        duration = intent?.getIntExtra("duration", 0) ?: 0
+
         seconds = 0
 
-        startForeground(SERVICE_ID, Helper.createNotificationMessage(this, seconds))
+        startForeground(SERVICE_ID, Helper.createNotificationMessage(this, duration))
 
         job = scope.launch {
             while (true) {
                 delay(1000)
                 seconds++
-                updateAll()
+
+                Log.d("TimerService", "Прошло $seconds секунд")
+
+                if (seconds >= duration) {
+                    timerCompleted()
+                    break
+                } else {
+                    updateNotification()
+                }
             }
         }
         return START_STICKY
     }
 
-    private fun updateAll() {
-        Log.d("TimerService", "Прошло $seconds секунд")
-
-        sendBroadcast(Intent("TIMER_VALUE").putExtra("seconds", seconds).setPackage(packageName))
-
+    private fun updateNotification() {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(SERVICE_ID, Helper.createNotificationMessage(this, seconds))
+        manager.notify(SERVICE_ID, Helper.createNotificationMessage(this, duration - seconds))
+    }
+
+    private fun timerCompleted() {
+        stopSelf()
+        sendBroadcast(
+            Intent("TIMER_COMPLETE").putExtra("timer_complete", true).setPackage(packageName)
+        )
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(SERVICE_ID, Helper.createCompletedNotificationMessage(this))
     }
 
     override fun onDestroy() {

@@ -15,9 +15,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SearchBarDefaults.InputField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -29,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -60,17 +64,22 @@ class MainActivity : ComponentActivity() {
 fun TimerScreen() {
     val context = LocalContext.current
     var seconds by remember { mutableIntStateOf(0) }
+    var isStartButtonEnabled by remember { mutableStateOf(true) }
     val timerService = remember { Intent(context, TimerService::class.java) }
+    var timerComplete by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                seconds = intent.getIntExtra("seconds", 0)
+                timerComplete = intent.getBooleanExtra("timer_complete", false)
+                if (timerComplete) {
+                    isStartButtonEnabled = true
+                }
             }
         }
         ContextCompat.registerReceiver(
             context, receiver,
-            IntentFilter("TIMER_VALUE"),
+            IntentFilter("TIMER_COMPLETE"),
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         onDispose { context.unregisterReceiver(receiver) }
@@ -83,31 +92,28 @@ fun TimerScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "$seconds",
-            fontSize = 96.sp,
-            style = MaterialTheme.typography.displayLarge
+        OutlinedTextField(
+            value = seconds.toString(),
+            onValueChange = { newValue ->
+                seconds = newValue.toIntOrNull() ?: 0
+                timerService.putExtra("duration", seconds)
+            },
+            label = { Text("Введите количество секунд") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(12.dp))
         Text(text = "секунд", fontSize = 20.sp)
         Spacer(modifier = Modifier.height(40.dp))
         Button(
             onClick = {
                 context.startForegroundService(timerService)
+                isStartButtonEnabled = false
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            enabled = isStartButtonEnabled
         ) {
             Text("Старт")
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = {
-                context.stopService(timerService)
-                seconds = 0
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Стоп")
         }
     }
 }
