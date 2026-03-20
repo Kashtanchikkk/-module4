@@ -1,0 +1,12 @@
+[
+  {"id": 1, "userId": 1, "title": "Красивый закат сегодня", "body": "Смотрите, какой цвет неба — оранжевый и розовый!", "avatarUrl": "https://i.pravatar.cc/150?img=1"},
+  {"id": 2, "userId": 2, "title": "Новый кофе-мастер-класс", "body": "Приходите все! Будем учиться варить идеальный эспрессо.", "avatarUrl": "https://i.pravatar.cc/150?img=2"},
+  {"id": 3, "userId": 3, "title": "Пробежка в парке", "body": "5 км за 25 минут — личный рекорд!", "avatarUrl": "https://i.pravatar.cc/150?img=3"},
+  {"id": 4, "userId": 4, "title": "Новая книга", "body": "Начал читать «Мастер и Маргарита» — не могу оторваться.", "avatarUrl": "https://i.pravatar.cc/150?img=4"},
+  {"id": 5, "userId": 5, "title": "Котик дома", "body": "Взяли котёнка из приюта. Знакомьтесь — Барсик!", "avatarUrl": "https://i.pravatar.cc/150?img=5"},
+  {"id": 6, "userId": 6, "title": "Рецепт борща", "body": "Готовил по бабушкиному рецепту. Получилось невероятно!", "avatarUrl": "https://i.pravatar.cc/150?img=6"},
+  {"id": 7, "userId": 7, "title": "Поездка в горы", "body": "Три дня в Альпах — это незабываемо.", "avatarUrl": "https://i.pravatar.cc/150?img=7"},
+  {"id": 8, "userId": 8, "title": "Kotlin корутины", "body": "Наконец разобрался с Flow и StateFlow. Делюсь заметками!", "avatarUrl": "https://i.pravatar.cc/150?img=8"},
+  {"id": 9, "userId": 9, "title": "Концерт вечером", "body": "Был на джазовом концерте — атмосфера волшебная.", "avatarUrl": "https://i.pravatar.cc/150?img=9"},
+  {"id": 10, "userId": 10, "title": "Урожай помидоров", "body": "С огорода собрал 10 кг помидоров. Делаю соус!", "avatarUrl": "https://i.pravatar.cc/150?img=10"}
+]
