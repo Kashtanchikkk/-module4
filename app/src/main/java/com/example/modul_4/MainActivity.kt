@@ -1,151 +1,268 @@
 package com.example.modul_4
 
 import android.os.Bundle
+import com.example.modul_4.ui.theme.Modul_4Theme
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ProgressIndicatorDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.work.ExistingWorkPolicy
+import androidx.core.content.ContextCompat
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import com.example.modul_4.ui.theme.Modul_4Theme
-import com.example.modul_4.workers.CompressWorker
-import com.example.modul_4.workers.Keys
-import com.example.modul_4.workers.UploadWorker
-import com.example.modul_4.workers.WatermarkWorker
+
+private val CITIES = listOf("Москва", "Лондон", "Нью-Йорк")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+
         enableEdgeToEdge()
         setContent {
             Modul_4Theme() {
-                PhotoProcessingScreen()
+                WeatherScreen()
             }
         }
     }
 }
 
 @Composable
-fun PhotoProcessingScreen() {
+fun WeatherScreen() {
     val context = LocalContext.current
-    val workManager = remember { WorkManager.getInstance(context) }
+    val workManager = WorkManager.getInstance(context)
 
-    val uploadInfo by workManager
-        .getWorkInfosByTagLiveData("upload_tag").observeAsState()
-    val compressInfo by workManager
-        .getWorkInfosByTagLiveData("compress_tag").observeAsState()
-    val watermarkInfo by workManager
-        .getWorkInfosByTagLiveData("watermark_tag").observeAsState()
+    val weatherInfoList by workManager.getWorkInfosByTagLiveData("weather_tag")
+        .observeAsState(emptyList())
+    val reportInfoList by workManager.getWorkInfosByTagLiveData("report_tag")
+        .observeAsState(emptyList())
 
-    val compressState = compressInfo?.firstOrNull()?.state
-    val watermarkState = watermarkInfo?.firstOrNull()?.state
-    val uploadState = uploadInfo?.firstOrNull()
+    val reportInfo = reportInfoList.firstOrNull()
+
+    val completedCount = weatherInfoList.count { it.state == WorkInfo.State.SUCCEEDED }
+    val totalCities = CITIES.size
+
+    val isAnyRunning = weatherInfoList.any {
+        it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+    }
+    val isReportRunning =
+        reportInfo?.state == WorkInfo.State.RUNNING || reportInfo?.state == WorkInfo.State.ENQUEUED
+    val isAllDone = reportInfo?.state == WorkInfo.State.SUCCEEDED
+    val isInProgress = isAnyRunning || isReportRunning
 
     val statusText = when {
-        compressState == WorkInfo.State.RUNNING -> "Сжимаем фото..."
-        watermarkState == WorkInfo.State.RUNNING -> "Добавляем водяной знак..."
-        uploadState?.state == WorkInfo.State.RUNNING -> "Загружаем в облако..."
-        uploadState?.state == WorkInfo.State.SUCCEEDED -> {
-            val path = uploadState.outputData.getString(Keys.KEY_RESULT) ?: ""
-            "Готово! Фото загружено\n$path"
-        }
-
-        uploadState?.state == WorkInfo.State.FAILED ||
-                compressState == WorkInfo.State.FAILED -> "Ошибка! Выполнение прервано."
-
-        else -> "Нажмите кнопку для обработки фото"
+        isAllDone -> "Все данные получены!"
+        isReportRunning -> "Формируем отчёт..."
+        isAnyRunning && completedCount == 0 -> "Загрузка... ($totalCities в процессе)"
+        isAnyRunning -> "Загрузка... ($completedCount из $totalCities готово)"
+        else -> "Готов начать"
     }
 
-    val isRunning = listOf(compressState, watermarkState, uploadState?.state).any {
-        it == WorkInfo.State.RUNNING || it == WorkInfo.State.ENQUEUED
-    }
+    val cityStatusMap = buildCityStatusMap(weatherInfoList, CITIES)
 
+    val reportText = if (isAllDone) buildReportText(reportInfo, weatherInfoList, CITIES) else null
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(60.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            statusText,
+            text = statusText,
             fontSize = 16.sp,
-            textAlign = TextAlign.Center,
-            color = when (uploadState?.state) {
-                WorkInfo.State.SUCCEEDED -> Color.Blue
-                WorkInfo.State.FAILED -> Color.Red
-                else -> MaterialTheme.colorScheme.onSurface
-            }
+            fontWeight = FontWeight.Medium,
+            color = if (isAllDone) Color(0xFF1976D2) else MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center
         )
+        Spacer(Modifier.height(16.dp))
 
-        Spacer(Modifier.height(24.dp))
-
-        if (isRunning) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        CITIES.forEach { city ->
+            CityWeatherCard(
+                cityName = city,
+                status = cityStatusMap[city],
+                isRunning = isInProgress && cityStatusMap[city] == null
+            )
+            Spacer(Modifier.height(8.dp))
         }
 
-        Spacer(Modifier.height(32.dp))
+        if (reportText != null) {
+            Spacer(Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Text(
+                    text = reportText,
+                    modifier = Modifier.padding(16.dp),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+        }
 
-        Button(
-            onClick = { startProcessing(workManager, "photo.png") },
-            enabled = !isRunning
+        Spacer(Modifier.height(16.dp))
+
+        if (isInProgress) {
+            Button(
+                onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()
+            ) { Text("В процессе...") }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = {
+                    workManager.cancelAllWorkByTag("weather_tag")
+                    workManager.cancelAllWorkByTag("report_tag")
+                }, modifier = Modifier.fillMaxWidth()
+            ) { Text("Отменить") }
+        } else {
+            Button(
+                onClick = { startWeatherParallel(workManager) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2))
+            ) { Text("Собрать прогноз") }
+        }
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+data class CityWeatherStatus(
+    val temperature: Int, val condition: String
+)
+
+@Composable
+fun CityWeatherCard(
+    cityName: String, status: CityWeatherStatus?, isRunning: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Начать обработку и загрузку")
+            Column {
+                Text(
+                    text = cityName, fontWeight = FontWeight.Bold, fontSize = 16.sp
+                )
+                Text(
+                    text = when {
+                        status != null -> "Готово"
+                        isRunning -> "Загружается..."
+                        else -> "Ожидание"
+                    }, fontSize = 13.sp, color = when {
+                        status != null -> Color(0xFF1976D2)
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+
+            when {
+                status != null -> {
+                    Text(
+                        text = "${status.temperature}°C",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                isRunning -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp), strokeWidth = 2.dp
+                    )
+                }
+            }
         }
     }
 }
 
-private fun startProcessing(workManager: WorkManager, fileName: String) {
-    val inputData = workDataOf(Keys.KEY_FILE_NAME to fileName)
+private fun buildCityStatusMap(
+    workInfoList: List<WorkInfo>, cities: List<String>
+): Map<String, CityWeatherStatus> {
+    val result = mutableMapOf<String, CityWeatherStatus>()
+    workInfoList.forEachIndexed { index, workInfo ->
+        if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+            val cityName = cities.getOrNull(index) ?: return@forEachIndexed
+            val temp = workInfo.outputData.getInt(KEY_TEMPERATURE, 0)
+            val condition = workInfo.outputData.getString(KEY_WEATHER_CONDITION) ?: "ясно"
+            result[cityName] = CityWeatherStatus(temp, condition)
+        }
+    }
+    return result
+}
 
-    val compressRequest = OneTimeWorkRequestBuilder<CompressWorker>()
-        .setInputData(inputData)
-        .addTag("compress_tag")
-        .build()
+private fun buildReportText(
+    reportInfo: WorkInfo?, weatherInfoList: List<WorkInfo>, cities: List<String>
+): String {
+    val cityLines = weatherInfoList.mapIndexed { index, workInfo ->
+        val city = cities.getOrNull(index) ?: ""
+        val temp = workInfo.outputData.getInt(KEY_TEMPERATURE, 0)
+        val condition = workInfo.outputData.getString(KEY_WEATHER_CONDITION) ?: "ясно"
+        "$city: ${temp}°C, $condition"
+    }.joinToString("\n")
 
-    val watermarkRequest = OneTimeWorkRequestBuilder<WatermarkWorker>()
-        .addTag("watermark_tag")
-        .build()
+    val avgTemp = reportInfo?.outputData?.getInt(KEY_TEMPERATURE, 0) ?: 0
+    return "Итоговый прогноз:\n$cityLines\n\nСредняя температура: ${avgTemp}°C"
+}
 
-    val uploadRequest = OneTimeWorkRequestBuilder<UploadWorker>()
-        .addTag("upload_tag")
-        .build()
+private fun startWeatherParallel(workManager: WorkManager) {
+    val weatherRequests = CITIES.map { city ->
+        OneTimeWorkRequestBuilder<WeatherWorker>().setInputData(workDataOf(KEY_CITY_NAME to city))
+            .addTag("weather_tag").build()
+    }
 
-    workManager.beginUniqueWork(
-        "photo_processing",
-        ExistingWorkPolicy.REPLACE,
-        compressRequest
-    ).then(watermarkRequest)
-        .then(uploadRequest)
-        .enqueue()
+    val avgTemp = (-5..20).random()
+    val reportRequest =
+        OneTimeWorkRequestBuilder<WeatherReportWorker>().setInputData(workDataOf(KEY_TEMPERATURE to avgTemp))
+            .addTag("report_tag").build()
+
+    workManager.beginWith(weatherRequests).then(reportRequest).enqueue()
 }
