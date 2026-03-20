@@ -1,9 +1,8 @@
 package com.example.modul_4
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
-import android.location.Geocoder
+import androidx.lifecycle.viewmodel.compose.viewModel
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -13,11 +12,18 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -25,13 +31,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.modul_4.ui.theme.Modul_4Theme
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.tasks.await
-import java.util.Locale
-
 
 class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -41,172 +40,127 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             Modul_4Theme() {
-                LocationScreen()
+                AlarmScreen()
             }
         }
     }
 }
-
-sealed class LocationState {
-    object Idle : LocationState()
-    object Loading : LocationState()
-    data class Success(val address: String, val lat: Double, val lng: Double) : LocationState()
-    data class Error(val message: String) : LocationState()
-}
-
 
 @Composable
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
-fun LocationScreen() {
+fun AlarmScreen(vm: ReminderViewModel = viewModel()) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var state by remember { mutableStateOf<LocationState>(LocationState.Idle) }
+
+    LaunchedEffect(Unit) {
+        vm.init(context)
+    }
+
+    var notificationGranted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else true
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { perms ->
-        val granted = perms[Manifest.permission.ACCESS_FINE_LOCATION] == true
-                || perms[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) {
-            scope.launch { state = fetchAddress(context) }
-        } else {
-            state = LocationState.Error("Разрешение на геолокацию отклонено")
-        }
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationGranted = granted
+        if (granted) vm.enable(context)
     }
 
-    fun onGetAddress() {
-        val fine =
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-        val coarse =
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
-        if (fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED) {
-            scope.launch { state = fetchAddress(context) }
-        } else {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
-        }
-    }
+    val indicatorColor by animateColorAsState(
+        targetValue = if (vm.isEnabled) Color(0xFF2E7D32) else Color(0xFF9E9E9E),
+        animationSpec = tween(500),
+        label = "indicator"
+    )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    val bgColor = Color(0xFFF5F5F5)
+    val enabledBtn = Color(0xFF1B5E20)
+    val disabledBtn = Color(0xFFB71C1C)
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = bgColor
     ) {
-        when (val s = state) {
-            is LocationState.Idle -> {
-                Text(
-                    text = "Нажмите кнопку",
-                    fontSize = 20.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
-            }
-
-            is LocationState.Loading -> {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "Определяем местоположение…",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-            }
-
-            is LocationState.Success -> {
-                Text(
-                    text = s.address,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 28.sp
-                )
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = "Lat: ${"%.6f".format(s.lat)}",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Text(
-                    text = "Lng: ${"%.6f".format(s.lng)}",
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-            }
-
-            is LocationState.Error -> {
-                Text(
-                    text = " ${s.message}",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        Spacer(Modifier.height(40.dp))
-
-        Button(
-            onClick = { onGetAddress() },
-            enabled = state !is LocationState.Loading
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("Получить мой адрес", fontSize = 16.sp)
-        }
-    }
-}
 
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
-private suspend fun fetchAddress(context: Context): LocationState {
-    return try {
-        val client = LocationServices.getFusedLocationProviderClient(context)
-
-        val location = client
-            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
-            .await()
-
-        if (location == null) {
-            return LocationState.Error("Не удалось получить координаты.\nПроверьте GPS и интернет.")
-        }
-
-        val lat = location.latitude
-        val lng = location.longitude
-        val address = reverseGeocode(context, lat, lng)
-
-        LocationState.Success(address = address, lat = lat, lng = lng)
-
-    } catch (e: Exception) {
-        LocationState.Error("Ошибка: ${e.localizedMessage}")
-    }
-}
-
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-private suspend fun reverseGeocode(context: Context, lat: Double, lng: Double): String {
-    val geocoder = Geocoder(context, Locale.getDefault())
-
-    return suspendCancellableCoroutine { cont ->
-        geocoder.getFromLocation(lat, lng, 1, object : Geocoder.GeocodeListener {
-            override fun onGeocode(addresses: MutableList<android.location.Address>) {
-                val address = addresses.firstOrNull()
-                cont.resume(address?.formatAddress() ?: "Адрес не найден") { cause, _, _ -> null?.let { it(cause) } }
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(indicatorColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (vm.isEnabled) "✓" else "!",
+                    fontSize = 42.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
-            override fun onError(errorMessage: String?) {
-                cont.resume("Ошибка геокодирования: $errorMessage") { cause, _, _ -> null?.let { it(cause) } }
-            }
-        })
-    }
-}
+            Spacer(modifier = Modifier.height(24.dp))
 
-private fun android.location.Address.formatAddress(): String {
-    val parts = mutableListOf<String>()
-    for (i in 0..maxAddressLineIndex) {
-        getAddressLine(i)?.let { parts.add(it) }
+            Text(
+                text = if (vm.isEnabled) "Напоминание включено" else "Напоминание выключено",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF1C1B1F),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = if (vm.isEnabled)
+                    "Ежедневно в 20:00\nСледующее: ${nextReminderLabel()} в 20:00"
+                else
+                    "Нажмите, чтобы включить",
+                fontSize = 15.sp,
+                color = Color(0xFF757575),
+                textAlign = TextAlign.Center,
+                lineHeight = 22.sp
+            )
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            Button(
+                onClick = {
+                    if (vm.isEnabled) {
+                        vm.disable(context)
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationGranted) {
+                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            vm.enable(context)
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (vm.isEnabled) disabledBtn else enabledBtn
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                Text(
+                    text = if (vm.isEnabled) "Выключить напоминание"
+                    else "Включить напоминание в 20:00",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
+        }
     }
-    return parts.joinToString(", ")
 }
