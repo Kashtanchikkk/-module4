@@ -18,7 +18,9 @@
             android:name=".RandomService"
             android:enabled="true"
             android:exported="true"
-            android:foregroundServiceType="specialUse"></service>
+            android:foregroundServiceType="specialUse">
+
+        </service>
 
         <activity
             android:name=".MainActivity"
